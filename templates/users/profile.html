@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}个人中心 - {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 左侧：个人信息卡片 -->
+    <div class="col-12 col-md-4 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    {% if user.avatar %}
+                    <img src="{{ user.avatar.url }}" class="rounded-circle img-thumbnail"
+                         width="120" height="120" alt="{{ user.username }}"
+                         style="object-fit: cover;">
+                    {% else %}
+                    <i class="bi bi-person-circle" style="font-size: 5rem; color: #6c757d;"></i>
+                    {% endif %}
+                </div>
+                <h5>{{ user.username }}</h5>
+                <p class="text-muted small">{{ user.email }}</p>
+                <p class="text-muted small">
+                    <i class="bi bi-calendar me-1"></i>注册于 {{ user.date_joined|date:"Y-m-d" }}
+                </p>
+                <div class="d-flex justify-content-around border-top pt-3">
+                    <div class="text-center">
+                        <strong>{{ user.videos_uploaded.count }}</strong>
+                        <div class="small text-muted">上传</div>
+                    </div>
+                    <div class="text-center">
+                        <strong>{{ user.favorites.count }}</strong>
+                        <div class="small text-muted">收藏</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：编辑个人信息 -->
+    <div class="col-12 col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-pencil-square me-1"></i>编辑个人信息</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label for="avatar" class="form-label">头像</label>
+                        <input type="file" class="form-control" id="avatar" name="avatar"
+                               accept="image/jpeg,image/png,image/gif,image/webp">
+                        <small class="text-muted">建议尺寸 200x200 像素，支持 JPG/PNG 格式</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="bio" class="form-label">个人简介</label>
+                        <textarea class="form-control" id="bio" name="bio" rows="3"
+                                  maxlength="500" placeholder="简单介绍一下自己吧（最多 500 字）">{{ user.bio }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">手机号</label>
+                        <input type="text" class="form-control" id="phone" name="phone"
+                               value="{{ user.phone }}" placeholder="选填">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="website" class="form-label">个人网站</label>
+                        <input type="url" class="form-control" id="website" name="website"
+                               value="{{ user.website }}" placeholder="https://example.com">
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>保存修改
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

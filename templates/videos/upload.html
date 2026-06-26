@@ -1,0 +1,313 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}上传视频 - {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h4 class="mb-0"><i class="bi bi-cloud-arrow-up me-2"></i>上传视频</h4>
+            </div>
+            <div class="card-body">
+                <!-- 上传表单 -->
+                <form id="uploadForm" method="POST" enctype="multipart/form-data"
+                      action="{% url 'upload' %}">
+                    {% csrf_token %}
+
+                    <!-- 视频标题 -->
+                    <div class="mb-3">
+                        <label for="title" class="form-label">视频标题 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="title" name="title"
+                               value="{{ form_data.title|default:'' }}"
+                               placeholder="请输入视频标题（最多 200 字）"
+                               maxlength="200" required>
+                    </div>
+
+                    <!-- 视频描述 -->
+                    <div class="mb-3">
+                        <label for="description" class="form-label">视频描述</label>
+                        <textarea class="form-control" id="description" name="description"
+                                  rows="4" placeholder="详细描述视频内容（支持 Markdown 格式）"
+                                  maxlength="5000">{{ form_data.description|default:'' }}</textarea>
+                    </div>
+
+                    <!-- 分类选择 -->
+                    <div class="mb-3">
+                        <label for="category" class="form-label">分类</label>
+                        <select class="form-select" id="category" name="category">
+                            <option value="">-- 请选择分类 --</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}"
+                                    {% if form_data.category_id|stringformat:"s" == cat.id|stringformat:"s" %}selected{% endif %}>
+                                {{ cat.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- 标签 -->
+                    <div class="mb-3">
+                        <label for="tags" class="form-label">标签</label>
+                        <input type="text" class="form-control" id="tags" name="tags"
+                               value="{{ form_data.tags|default:'' }}"
+                               placeholder="多个标签用逗号分隔，如：Python, Django, 教程">
+                        <small class="text-muted">多个标签用逗号分隔</small>
+                    </div>
+
+                    <!-- 文件上传区域 -->
+                    <div class="mb-4">
+                        <label class="form-label">视频文件 <span class="text-danger">*</span></label>
+                        <div class="upload-dropzone" id="dropzone">
+                            <div class="text-center py-5" id="dropzoneContent">
+                                <i class="bi bi-film" style="font-size: 3rem; color: #6c757d;"></i>
+                                <h5 class="mt-3 text-muted">拖拽视频文件到此处</h5>
+                                <p class="text-muted mb-3">或点击选择文件</p>
+                                <button type="button" class="btn btn-outline-primary" id="btnSelectFile">
+                                    <i class="bi bi-folder2-open me-1"></i>选择视频文件
+                                </button>
+                                <div class="mt-3">
+                                    <small class="text-muted">
+                                        支持的格式：MP4, MOV, AVI, MKV, WEBM（最大 2GB）
+                                    </small>
+                                </div>
+                            </div>
+                            <!-- 文件选择后显示的信息 -->
+                            <div class="selected-file-info d-none p-3" id="fileInfo">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-file-play" style="font-size: 2rem; color: #0d6efd;"></i>
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-0" id="fileName">-</h6>
+                                        <small class="text-muted" id="fileSize">-</small>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-danger btn-sm" id="btnRemoveFile">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="file" id="videoFile" name="video_file"
+                                   accept=".mp4,.mov,.avi,.mkv,.webm,.flv,.wmv,.m4v"
+                                   style="display: none;">
+                        </div>
+                    </div>
+
+                    <!-- 上传进度条 -->
+                    <div class="mb-3 d-none" id="progressContainer">
+                        <label class="form-label">上传进度</label>
+                        <div class="progress" style="height: 24px;">
+                            <div id="uploadProgress" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
+                                 style="width: 0%;">
+                                0%
+                            </div>
+                        </div>
+                        <small class="text-muted mt-1 d-block" id="progressText">准备上传...</small>
+                    </div>
+
+                    <!-- 提交按钮 -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg" id="btnSubmit" disabled>
+                            <i class="bi bi-cloud-upload me-2"></i>开始上传
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+/* ============================================================
+   视频上传页面交互脚本
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', function() {
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('videoFile');
+    const btnSelectFile = document.getElementById('btnSelectFile');
+    const btnRemoveFile = document.getElementById('btnRemoveFile');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const dropzoneContent = document.getElementById('dropzoneContent');
+    const btnSubmit = document.getElementById('btnSubmit');
+    const form = document.getElementById('uploadForm');
+    const progressContainer = document.getElementById('progressContainer');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const progressText = document.getElementById('progressText');
+
+    // ----- 文件大小格式化 -----
+    function formatSize(bytes) {
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let size = bytes;
+        for (const unit of units) {
+            if (size < 1024) return size.toFixed(1) + ' ' + unit;
+            size /= 1024;
+        }
+        return size.toFixed(1) + ' PB';
+    }
+
+    // ----- 选择文件按钮 -----
+    btnSelectFile.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    // ----- 文件选择事件 -----
+    fileInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            showFileInfo(this.files[0]);
+        }
+    });
+
+    // ----- 拖拽上传支持 -----
+    dropzone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('drag-over');
+        this.style.borderColor = '#0d6efd';
+        this.style.background = '#f0f7ff';
+    });
+
+    dropzone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('drag-over');
+        this.style.borderColor = '#dee2e6';
+        this.style.background = '#f8f9fa';
+    });
+
+    dropzone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('drag-over');
+        this.style.borderColor = '#dee2e6';
+        this.style.background = '#f8f9fa';
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            fileInput.files = e.dataTransfer.files;
+            showFileInfo(e.dataTransfer.files[0]);
+        }
+    });
+
+    // ----- 显示文件信息 -----
+    function showFileInfo(file) {
+        // 校验文件类型
+        const allowedExts = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v'];
+        const ext = '.' + file.name.split('.').pop().toLowerCase();
+        if (!allowedExts.includes(ext)) {
+            alert('不支持的文件格式：' + ext + '\n支持的格式：' + allowedExts.join(', '));
+            fileInput.value = '';
+            return;
+        }
+
+        // 校验文件大小（2GB）
+        if (file.size > 2 * 1024 * 1024 * 1024) {
+            alert('文件大小超过 2GB 限制，请使用分片上传或压缩后再试。');
+            fileInput.value = '';
+            return;
+        }
+
+        fileName.textContent = file.name;
+        fileSize.textContent = formatSize(file.size);
+        dropzoneContent.classList.add('d-none');
+        fileInfo.classList.remove('d-none');
+        btnSubmit.disabled = false;
+    }
+
+    // ----- 移除已选择的文件 -----
+    btnRemoveFile.addEventListener('click', function() {
+        fileInput.value = '';
+        fileInfo.classList.add('d-none');
+        dropzoneContent.classList.remove('d-none');
+        btnSubmit.disabled = true;
+    });
+
+    // ----- 表单提交 + 上传进度 -----
+    form.addEventListener('submit', function(e) {
+        if (!fileInput.files || !fileInput.files[0]) {
+            e.preventDefault();
+            alert('请选择视频文件');
+            return;
+        }
+
+        // 显示进度条，隐藏提交按钮
+        progressContainer.classList.remove('d-none');
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<i class="bi bi-arrow-repeat me-2 spinner"></i>上传中...';
+
+        // 使用 XMLHttpRequest 实现上传进度跟踪
+        e.preventDefault();
+
+        const formData = new FormData(form);
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', function(e) {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                uploadProgress.style.width = percent + '%';
+                uploadProgress.setAttribute('aria-valuenow', percent);
+                uploadProgress.textContent = percent + '%';
+                progressText.textContent = '已上传 ' + formatSize(e.loaded) + ' / ' + formatSize(e.total);
+            }
+        });
+
+        xhr.addEventListener('load', function() {
+            if (xhr.status >= 200 && xhr.status < 400) {
+                // 上传成功，跳转到新页面（服务端返回 redirect）
+                window.location.href = xhr.responseURL;
+            } else {
+                // 上传失败
+                uploadProgress.classList.remove('progress-bar-animated');
+                uploadProgress.classList.add('bg-danger');
+                progressText.textContent = '上传失败，请重试';
+                btnSubmit.disabled = false;
+                btnSubmit.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>重新上传';
+            }
+        });
+
+        xhr.addEventListener('error', function() {
+            uploadProgress.classList.remove('progress-bar-animated');
+            uploadProgress.classList.add('bg-danger');
+            progressText.textContent = '网络错误，上传失败';
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>重新上传';
+        });
+
+        xhr.open('POST', form.action, true);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.send(formData);
+    });
+});
+</script>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .upload-dropzone {
+        border: 2px dashed #dee2e6;
+        border-radius: 0.5rem;
+        background: #f8f9fa;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .upload-dropzone:hover {
+        border-color: #0d6efd;
+        background: #f0f7ff;
+    }
+    .upload-dropzone.drag-over {
+        border-color: #0d6efd;
+        background: #e8f0fe;
+    }
+    .selected-file-info {
+        background: #e8f0fe;
+        border-radius: 0.5rem;
+    }
+    .spinner {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}

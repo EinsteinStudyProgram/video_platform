@@ -1,0 +1,83 @@
+<!-- ============================================================
+     评论列表子模板
+     支持楼中楼回复展示
+     ============================================================ -->
+{% for comment in video.comments.all %}
+    {% if comment.is_approved and not comment.parent %}
+    <div class="comment-item border-bottom pb-3 mb-3">
+        <div class="d-flex gap-2">
+            <!-- 用户头像 -->
+            <div>
+                {% if comment.user.avatar %}
+                <img src="{{ comment.user.avatar.url }}" class="rounded-circle"
+                     width="36" height="36" alt="{{ comment.user.username }}"
+                     style="object-fit: cover;">
+                {% else %}
+                <i class="bi bi-person-circle" style="font-size: 1.8rem; color: #6c757d;"></i>
+                {% endif %}
+            </div>
+            <div class="flex-grow-1">
+                <!-- 用户信息和时间 -->
+                <div class="d-flex align-items-center gap-2">
+                    <strong class="small">{{ comment.user.username }}</strong>
+                    <small class="text-muted">{{ comment.created_at|date:"Y-m-d H:i" }}</small>
+                </div>
+                <!-- 评论内容 -->
+                <p class="mb-1 mt-1">{{ comment.content|linebreaksbr }}</p>
+                <!-- 操作按钮 -->
+                <div class="d-flex gap-3 small">
+                    <button class="btn btn-link btn-sm text-muted p-0 reply-btn"
+                            data-comment-id="{{ comment.id }}">
+                        <i class="bi bi-reply me-1"></i>回复
+                    </button>
+                    {% if user == comment.user %}
+                    <button class="btn btn-link btn-sm text-danger p-0 delete-comment-btn"
+                            data-comment-id="{{ comment.id }}">
+                        <i class="bi bi-trash me-1"></i>删除
+                    </button>
+                    {% endif %}
+                </div>
+
+                <!-- 回复输入框（隐藏，点击"回复"后展开） -->
+                <div class="reply-form mt-2" id="replyForm_{{ comment.id }}" style="display: none;">
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control reply-input"
+                               placeholder="回复 {{ comment.user.username }}..."
+                               maxlength="2000"
+                               data-parent-id="{{ comment.id }}">
+                        <button class="btn btn-primary reply-submit"
+                                data-parent-id="{{ comment.id }}"
+                                data-video-id="{{ video.pk }}">
+                            回复
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 子评论（楼中楼回复） -->
+                {% with replies=comment.replies.all %}
+                {% if replies %}
+                <div class="mt-2 ms-3 ps-3 border-start border-2">
+                    {% for reply in replies %}
+                    {% if reply.is_approved %}
+                    <div class="mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <strong class="small">{{ reply.user.username }}</strong>
+                            <small class="text-muted">{{ reply.created_at|date:"Y-m-d H:i" }}</small>
+                        </div>
+                        <p class="mb-0 small">{{ reply.content|linebreaksbr }}</p>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% empty %}
+<div class="text-center text-muted py-4">
+    <i class="bi bi-chat-dots" style="font-size: 2rem;"></i>
+    <p class="mt-2">暂无评论，快来抢沙发吧~</p>
+</div>
+{% endfor %}

@@ -1,0 +1,21 @@
+# Python 虚拟环境 (必须加！否则几万个文件会被扫描)
+venv/
+env/
+.venv/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE 配置 (不要同步别人的编辑器配置)
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 你的敏感文件 (既然已经删除了，最好加上防止误传)
+github
+github.pub

@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}注册 - {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-12 col-sm-10 col-md-6 col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <i class="bi bi-person-plus" style="font-size: 3rem; color: #0d6efd;"></i>
+                    <h3 class="mt-2">创建账号</h3>
+                    <p class="text-muted">加入 {{ site_name }}，分享精彩视频</p>
+                </div>
+
+                <form method="POST" action="{% url 'users:register' %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="username" class="form-label">用户名</label>
+                        <input type="text" class="form-control" id="username"
+                               name="username" placeholder="请设置用户名" required
+                               minlength="2" maxlength="150">
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">邮箱</label>
+                        <input type="email" class="form-control" id="email"
+                               name="email" placeholder="请输入邮箱地址" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">密码</label>
+                        <input type="password" class="form-control" id="password"
+                               name="password" placeholder="请设置密码" required
+                               minlength="8">
+                        <div class="form-text">
+                            <small>密码要求：</small>
+                            <ul class="mb-0 ps-3">
+                                <li><small>至少 8 位字符</small></li>
+                                <li><small>必须包含大写字母（A-Z）</small></li>
+                                <li><small>必须包含小写字母（a-z）</small></li>
+                                <li><small>不能与用户名/邮箱过于相似</small></li>
+                                <li><small>不能是常见弱密码</small></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password_confirm" class="form-label">确认密码</label>
+                        <input type="password" class="form-control" id="password_confirm"
+                               name="password_confirm" placeholder="请再次输入密码" required>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-person-plus me-1"></i>注册
+                        </button>
+                    </div>
+                    <div class="text-center mt-3 small">
+                        已有账号？<a href="{% url 'users:login' %}" class="text-decoration-none">去登录</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

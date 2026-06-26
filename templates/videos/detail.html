@@ -1,0 +1,585 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ video.title }} - {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- ============================================================
+         左侧：视频播放器区域
+         ============================================================ -->
+    <div class="col-12 col-lg-8">
+        <!-- ============================================================
+             视频播放器 + 弹幕 Canvas
+             ============================================================ -->
+        <div class="video-player-wrapper mb-3 position-relative" style="border-radius: 0.5rem; overflow: hidden; background: #000;">
+            <video id="videoPlayer" class="w-100" controls
+                   preload="metadata"
+                   poster="{% if video.thumbnail %}{{ video.thumbnail.url }}{% endif %}"
+                   style="max-height: 70vh; display: block; width: 100%;"
+                   playsinline webkit-playsinline>
+                {% if video.transcoded_files.1080p %}
+                <source src="{% url 'video_stream_resolution' video.pk '1080p' %}"
+                        type="video/mp4" label="1080p" data-res="1080p">
+                {% endif %}
+                {% if video.transcoded_files.720p %}
+                <source src="{% url 'video_stream_resolution' video.pk '720p' %}"
+                        type="video/mp4" label="720p" data-res="720p">
+                {% endif %}
+                {% if video.transcoded_files.480p %}
+                <source src="{% url 'video_stream_resolution' video.pk '480p' %}"
+                        type="video/mp4" label="480p" data-res="480p">
+                {% endif %}
+                <source src="{% url 'video_stream' video.pk %}"
+                        type="video/mp4" label="原始">
+                您的浏览器不支持 HTML5 视频播放。
+            </video>
+            <!-- 弹幕 Canvas（覆盖在视频上，不拦截鼠标） -->
+            <canvas id="danmakuCanvas"
+                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;">
+            </canvas>
+        </div>
+
+        <!-- ============================================================
+             弹幕控制栏
+             ============================================================ -->
+        <div class="danmaku-controls d-flex align-items-center gap-2 mb-3 p-2 bg-light rounded">
+            <input type="text" id="danmakuInput" class="form-control form-control-sm"
+                   placeholder="输入弹幕..." maxlength="200"
+                   {% if not user.is_authenticated %}disabled title="登录后发送弹幕"{% endif %}>
+            <select id="danmakuColor" class="form-select form-select-sm" style="width: auto;">
+                <option value="#FFFFFF">白色</option>
+                <option value="#FF0000">红色</option>
+                <option value="#00FF00">绿色</option>
+                <option value="#0000FF">蓝色</option>
+                <option value="#FFFF00">黄色</option>
+                <option value="#FF69B4">粉色</option>
+                <option value="#FFA500">橙色</option>
+                <option value="#00FFFF">青色</option>
+            </select>
+            <select id="danmakuType" class="form-select form-select-sm" style="width: auto;">
+                <option value="scroll">滚动</option>
+                <option value="top">顶部</option>
+                <option value="bottom">底部</option>
+            </select>
+            <button id="btnSendDanmaku" class="btn btn-primary btn-sm"
+                    {% if not user.is_authenticated %}disabled{% endif %}>
+                <i class="bi bi-send me-1"></i>弹幕
+            </button>
+            <button id="btnToggleDanmaku" class="btn btn-outline-secondary btn-sm" title="开关弹幕">
+                <i class="bi bi-card-text"></i>
+            </button>
+            <small class="text-muted ms-auto" id="danmakuCount">0 弹幕</small>
+        </div>
+
+        <!-- 视频信息 -->
+        <div class="video-info">
+            <h4 class="fw-bold">{{ video.title }}</h4>
+            <div class="d-flex flex-wrap align-items-center gap-3 text-muted small mb-3">
+                <span><i class="bi bi-eye me-1"></i>{{ video.views_count }} 次播放</span>
+                <span><i class="bi bi-clock me-1"></i>{{ video.duration_formatted }}</span>
+                <span><i class="bi bi-calendar me-1"></i>{{ video.created_at|date:"Y-m-d" }}</span>
+                {% if video.category %}
+                <a href="{% url 'category' video.category.slug %}"
+                   class="badge bg-secondary text-decoration-none">
+                    {{ video.category.name }}
+                </a>
+                {% endif %}
+            </div>
+
+            <!-- 操作按钮：点赞、收藏 -->
+            <div class="d-flex gap-2 mb-3">
+                <!-- 点赞按钮 -->
+                <button id="btnLike" class="btn btn-outline-danger btn-sm"
+                        data-video-id="{{ video.pk }}"
+                        data-liked="{{ user_liked|yesno:'true,false' }}">
+                    <i class="bi {% if user_liked %}bi-hand-thumbs-up-fill{% else %}bi-hand-thumbs-up{% endif %} me-1"></i>
+                    赞 <span id="likesCount">{{ video.likes_count }}</span>
+                </button>
+
+                <!-- 收藏按钮 -->
+                <button id="btnFavorite" class="btn btn-outline-warning btn-sm"
+                        data-video-id="{{ video.pk }}"
+                        data-favorited="{{ user_favorited|yesno:'true,false' }}">
+                    <i class="bi {% if user_favorited %}bi-heart-fill{% else %}bi-heart{% endif %} me-1"></i>
+                    收藏 <span id="favoritesCount">{{ video.favorites_count }}</span>
+                </button>
+            </div>
+
+            <!-- 上传者信息 -->
+            <div class="d-flex align-items-center mb-3 p-3 bg-light rounded">
+                <div class="me-3">
+                    {% if video.uploader.avatar %}
+                    <img src="{{ video.uploader.avatar.url }}"
+                         class="rounded-circle" width="48" height="48"
+                         alt="{{ video.uploader.username }}"
+                         style="object-fit: cover;">
+                    {% else %}
+                    <i class="bi bi-person-circle" style="font-size: 2.5rem; color: #6c757d;"></i>
+                    {% endif %}
+                </div>
+                <div>
+                    <strong>{{ video.uploader.username }}</strong>
+                    <div class="text-muted small">{{ video.uploader.bio|default:'这个用户很懒，什么都没写...'|truncatechars:50 }}</div>
+                </div>
+            </div>
+
+            <!-- 视频描述 -->
+            {% if video.description %}
+            <div class="video-description p-3 bg-light rounded mb-3">
+                <h6>视频描述</h6>
+                <p class="mb-0 text-muted" style="white-space: pre-wrap;">{{ video.description }}</p>
+            </div>
+            {% endif %}
+
+            <!-- 标签 -->
+            {% if video.tags %}
+            <div class="mb-3">
+                {% for tag in video.tags|cut:" "|split:"," %}
+                <span class="badge bg-info me-1">{{ tag }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- ============================================================
+             评论区
+             ============================================================ -->
+        <div class="comment-section mt-4">
+            <h5 class="mb-3">
+                <i class="bi bi-chat-dots me-1"></i>
+                评论 (<span id="commentsCount">{{ video.comments_count }}</span>)
+            </h5>
+
+            <!-- 评论输入框 -->
+            {% if user.is_authenticated %}
+            <div class="mb-3">
+                <textarea id="commentContent" class="form-control" rows="3"
+                          placeholder="发表评论..." maxlength="2000"></textarea>
+                <div class="d-flex justify-content-between mt-2">
+                    <small class="text-muted"><span id="commentCharCount">0</span>/2000</small>
+                    <button id="btnSubmitComment" class="btn btn-primary btn-sm"
+                            data-video-id="{{ video.pk }}">
+                        <i class="bi bi-send me-1"></i>发表评论
+                    </button>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <a href="{% url 'users:login' %}">登录</a> 后可以发表评论
+            </div>
+            {% endif %}
+
+            <!-- 评论列表 -->
+            <div id="commentList">
+                {% include 'videos/_comment_list.html' with video=video %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         右侧：个性化推荐 + 热门视频
+         ============================================================ -->
+    <div class="col-12 col-lg-4">
+        <!-- 个性化推荐 -->
+        <div class="card mb-3">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-star me-1"></i>为你推荐</h6>
+                <small class="text-muted">基于你的观看记录</small>
+            </div>
+            <div id="recommendList" class="list-group list-group-flush">
+                {% for rec in recommended %}
+                <a href="{% url 'detail' rec.pk %}"
+                   class="list-group-item list-group-item-action d-flex gap-3 py-3">
+                    <div class="position-relative" style="width: 160px; min-width: 120px;">
+                        {% if rec.thumbnail %}
+                        <img src="{{ rec.thumbnail.url }}"
+                             class="rounded" width="160" height="90"
+                             alt="{{ rec.title }}"
+                             style="object-fit: cover;">
+                        {% else %}
+                        <div class="rounded bg-secondary d-flex align-items-center justify-content-center"
+                             style="width: 160px; height: 90px;">
+                            <i class="bi bi-camera-video text-white"></i>
+                        </div>
+                        {% endif %}
+                        {% if rec.duration %}
+                        <span class="position-absolute bottom-0 end-0 badge bg-dark bg-opacity-75 m-1"
+                              style="font-size: 0.7rem;">
+                            {{ rec.duration_formatted }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="flex-grow-1 min-width-0">
+                        <h6 class="mb-1 text-truncate">{{ rec.title }}</h6>
+                        <small class="text-muted d-block">{{ rec.uploader.username }}</small>
+                        <small class="text-muted">
+                            <i class="bi bi-eye me-1"></i>{{ rec.views_count }}
+                        </small>
+                    </div>
+                </a>
+                {% empty %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                    <p class="mt-2">暂无推荐</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 热门视频 -->
+        <div class="card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-fire me-1"></i>热门视频</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for hot in trending %}
+                <a href="{% url 'detail' hot.pk %}"
+                   class="list-group-item list-group-item-action d-flex gap-3 py-3">
+                    <div class="position-relative" style="width: 140px; min-width: 100px;">
+                        {% if hot.thumbnail %}
+                        <img src="{{ hot.thumbnail.url }}"
+                             class="rounded" width="140" height="79"
+                             alt="{{ hot.title }}"
+                             style="object-fit: cover;">
+                        {% else %}
+                        <div class="rounded bg-secondary d-flex align-items-center justify-content-center"
+                             style="width: 140px; height: 79px;">
+                            <i class="bi bi-camera-video text-white"></i>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="flex-grow-1 min-width-0">
+                        <h6 class="mb-1 small text-truncate">{{ hot.title }}</h6>
+                        <small class="text-muted d-block">{{ hot.uploader.username }}</small>
+                        <small class="text-muted">
+                            <i class="bi bi-eye me-1"></i>{{ hot.views_count }}
+                        </small>
+                    </div>
+                </a>
+                {% empty %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-fire" style="font-size: 2rem;"></i>
+                    <p class="mt-2">暂无热门视频</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+/* ============================================================
+   视频播放器 + 弹幕引擎 + 推荐行为上报
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', function() {
+    const player = document.getElementById('videoPlayer');
+    const canvas = document.getElementById('danmakuCanvas');
+    const ctx = canvas ? canvas.getContext('2d') : null;
+    const videoId = '{{ video.pk }}';
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+    // ============================================================
+    // 1. 弹幕引擎
+    // ============================================================
+    let danmakuList = [];
+    let activeDanmaku = [];
+    let danmakuEnabled = true;
+    let animationId = null;
+    let danmakuLoaded = false;
+
+    function loadDanmaku() {
+        fetch('/api/danmaku/list/' + videoId + '/')
+            .then(r => r.json())
+            .then(data => {
+                if (data.code === 0) {
+                    danmakuList = data.data;
+                    document.getElementById('danmakuCount').textContent = data.total + ' 弹幕';
+                    danmakuLoaded = true;
+                }
+            })
+            .catch(() => {});
+    }
+    loadDanmaku();
+
+    function renderDanmaku() {
+        if (!ctx || !danmakuEnabled || !player) return;
+        const width = canvas.width = canvas.clientWidth;
+        const height = canvas.height = canvas.clientHeight;
+        ctx.clearRect(0, 0, width, height);
+
+        const currentTime = player.currentTime;
+        const margin = 0.3;
+
+        for (let i = 0; i < danmakuList.length; i++) {
+            const d = danmakuList[i];
+            if (d._active) continue;
+            if (Math.abs(d.time - currentTime) < margin) {
+                const topCount = activeDanmaku.filter(a => a.type === 'top').length;
+                const bottomCount = activeDanmaku.filter(a => a.type === 'bottom').length;
+                activeDanmaku.push({
+                    text: d.text,
+                    type: d.type || 'scroll',
+                    color: d.color || '#FFFFFF',
+                    x: width,
+                    y: d.type === 'top' ? 20 + (topCount * 28) % (height * 0.4) :
+                       d.type === 'bottom' ? height - 30 - (bottomCount * 28) % (height * 0.3) :
+                       30 + Math.random() * (height * 0.6),
+                    speed: width / 6,
+                    opacity: 1,
+                    font_size: d.font_size || 25,
+                    time: d.time,
+                });
+                d._active = true;
+            }
+        }
+
+        ctx.font = 'bold 16px "Microsoft YaHei", sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 3;
+
+        activeDanmaku = activeDanmaku.filter(d => {
+            if (d.type === 'scroll') {
+                d.x -= d.speed * 0.016;
+                if (d.x + ctx.measureText(d.text).width < 0) return false;
+            } else {
+                d.opacity -= 0.004;
+                if (d.opacity <= 0) return false;
+            }
+            ctx.fillStyle = d.color;
+            ctx.globalAlpha = Math.max(0, d.opacity);
+            if (d.type === 'scroll') {
+                ctx.fillText(d.text, d.x, d.y);
+            } else {
+                ctx.fillText(d.text, width / 2 - ctx.measureText(d.text).width / 2, d.y);
+            }
+            ctx.globalAlpha = 1;
+            return true;
+        });
+
+        if (danmakuEnabled) animationId = requestAnimationFrame(renderDanmaku);
+    }
+
+    function startDanmaku() {
+        if (animationId) cancelAnimationFrame(animationId);
+        if (danmakuEnabled && !player.paused) renderDanmaku();
+    }
+    function stopDanmaku() {
+        if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
+    }
+
+    player.addEventListener('play', function() {
+        if (danmakuEnabled && !danmakuLoaded) loadDanmaku();
+        startDanmaku();
+    });
+    player.addEventListener('pause', stopDanmaku);
+    player.addEventListener('seeking', function() {
+        danmakuList.forEach(d => d._active = false);
+        activeDanmaku = [];
+        stopDanmaku();
+    });
+    player.addEventListener('seeked', function() { if (!player.paused) startDanmaku(); });
+
+    document.getElementById('btnToggleDanmaku').addEventListener('click', function() {
+        danmakuEnabled = !danmakuEnabled;
+        this.classList.toggle('btn-outline-secondary', !danmakuEnabled);
+        this.classList.toggle('btn-secondary', danmakuEnabled);
+        if (danmakuEnabled) {
+            startDanmaku();
+        } else {
+            stopDanmaku();
+            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    });
+
+    document.getElementById('btnSendDanmaku').addEventListener('click', function() {
+        const input = document.getElementById('danmakuInput');
+        const content = input.value.trim();
+        if (!content) { alert('请输入弹幕内容'); return; }
+        if (content.length > 200) { alert('弹幕内容不能超过 200 字'); return; }
+        if (!player) { alert('请先播放视频'); return; }
+
+        const time = player.currentTime;
+        const color = document.getElementById('danmakuColor').value;
+        const type = document.getElementById('danmakuType').value;
+
+        fetch('/api/danmaku/send/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                video_id: parseInt(videoId),
+                content: content,
+                time: time,
+                type: type,
+                color: color,
+                font_size: 25,
+            }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.code === 0) {
+                danmakuList.push({
+                    text: content, time: time, type: type,
+                    color: color, font_size: 25, _active: false,
+                });
+                input.value = '';
+                document.getElementById('danmakuCount').textContent = danmakuList.length + ' 弹幕';
+            } else {
+                alert(data.msg || '发送失败');
+            }
+        })
+        .catch(() => alert('弹幕发送失败'));
+    });
+
+    document.getElementById('danmakuInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            document.getElementById('btnSendDanmaku').click();
+        }
+    });
+
+    // ============================================================
+    // 2. 自动选择最佳分辨率
+    // ============================================================
+    const sources = player.querySelectorAll('source[data-res]');
+    if (sources.length > 0) {
+        const screenWidth = window.innerWidth;
+        let preferredRes = '480p';
+        if (screenWidth >= 1920) preferredRes = '1080p';
+        else if (screenWidth >= 1280) preferredRes = '720p';
+        let selectedSrc = null;
+        for (const src of sources) {
+            const res = src.getAttribute('data-res');
+            if (res === preferredRes) { selectedSrc = src; break; }
+            if (!selectedSrc) selectedSrc = src;
+        }
+        if (selectedSrc) { player.src = selectedSrc.src; player.load(); }
+    }
+
+    // ============================================================
+    // 3. 播放进度保存
+    // ============================================================
+    player.addEventListener('timeupdate', function() {
+        try {
+            localStorage.setItem('vh_progress_' + videoId,
+                JSON.stringify({currentTime: player.currentTime, time: Date.now()}));
+        } catch(e) {}
+    });
+    try {
+        const saved = localStorage.getItem('vh_progress_' + videoId);
+        if (saved) {
+            const data = JSON.parse(saved);
+            if (Date.now() - data.time < 2 * 60 * 60 * 1000 && data.currentTime > 5) {
+                player.currentTime = data.currentTime;
+            }
+        }
+    } catch(e) {}
+
+    // ============================================================
+    // 4. 推荐行为上报（观看超过 30 秒算有效）
+    // ============================================================
+    let viewReported = false;
+    player.addEventListener('timeupdate', function() {
+        if (!viewReported && player.currentTime >= 30) {
+            viewReported = true;
+            fetch('/api/recommend/log/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'watch',
+                    video_id: parseInt(videoId),
+                    source: 'detail',
+                    value: Math.round(player.currentTime),
+                }),
+            }).catch(() => {});
+        }
+    });
+
+    // ============================================================
+    // 5. 点赞/收藏/评论 AJAX
+    // ============================================================
+    document.getElementById('btnLike')?.addEventListener('click', function() {
+        const vid = this.dataset.videoId;
+        fetch('/interactions/like/toggle/' + vid + '/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+        })
+        .then(r => r.json()).then(data => {
+            if (data.code === 0) {
+                const icon = this.querySelector('i');
+                document.getElementById('likesCount').textContent = data.likes_count;
+                if (data.action === 'liked') { icon.className = 'bi bi-hand-thumbs-up-fill me-1'; this.dataset.liked = 'true'; }
+                else { icon.className = 'bi bi-hand-thumbs-up me-1'; this.dataset.liked = 'false'; }
+            }
+        }).catch(() => alert('操作失败'));
+    });
+
+    document.getElementById('btnFavorite')?.addEventListener('click', function() {
+        const vid = this.dataset.videoId;
+        fetch('/interactions/favorite/toggle/' + vid + '/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+        })
+        .then(r => r.json()).then(data => {
+            if (data.code === 0) {
+                const icon = this.querySelector('i');
+                document.getElementById('favoritesCount').textContent = data.favorites_count;
+                if (data.action === 'favorited') { icon.className = 'bi bi-heart-fill me-1'; this.dataset.favorited = 'true'; }
+                else { icon.className = 'bi bi-heart me-1'; this.dataset.favorited = 'false'; }
+            }
+        }).catch(() => alert('操作失败'));
+    });
+
+    const btnComment = document.getElementById('btnSubmitComment');
+    const commentInput = document.getElementById('commentContent');
+    if (btnComment && commentInput) {
+        btnComment.addEventListener('click', function() {
+            const content = commentInput.value.trim();
+            if (!content) { alert('评论内容不能为空'); return; }
+            if (content.length > 2000) { alert('评论内容不能超过 2000 字'); return; }
+            fetch('/interactions/comment/add/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'video_id=' + videoId + '&content=' + encodeURIComponent(content),
+            })
+            .then(r => r.json()).then(data => {
+                if (data.code === 0) {
+                    const commentList = document.getElementById('commentList');
+                    const newComment = document.createElement('div');
+                    newComment.className = 'd-flex gap-2 mb-3 comment-item';
+                    newComment.innerHTML = `<div class="flex-grow-1"><strong>${data.data.user}</strong><small class="text-muted ms-2">${data.data.created_at}</small><p class="mb-0 mt-1">${data.data.content}</p></div>`;
+                    commentList.insertBefore(newComment, commentList.firstChild);
+                    commentInput.value = '';
+                    document.getElementById('commentsCount').textContent = parseInt(document.getElementById('commentsCount').textContent) + 1;
+                } else { alert(data.msg || '评论失败'); }
+            }).catch(() => alert('评论提交失败'));
+        });
+        commentInput.addEventListener('input', function() { document.getElementById('commentCharCount').textContent = this.value.length; });
+    }
+});
+</script>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .video-player-wrapper video { width: 100%; display: block; background: #000; outline: none; }
+    .video-player-wrapper video:focus { box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.25); }
+    .comment-item { padding: 0.75rem; border-bottom: 1px solid #f0f0f0; }
+    .comment-item:last-child { border-bottom: none; }
+    .danmaku-controls { border: 1px solid #dee2e6; }
+</style>
+{% endblock %}
